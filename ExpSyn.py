@@ -74,28 +74,6 @@ def main(nsyn=1):
 
     syn_circuit = SynapticCircuit(nsyn, somacenter_loc)
 
-##    # create nsyn synapses
-##    expsyn_mech = []
-##    expsyn_loc = []
-##    expsyn_tau_param = []
-##
-##    for isyn in range(nsyn):
-##        expsyn_mech.append( ephys.mechanisms.NrnMODPointProcessMechanism(
-##            name='expsyn',
-##            suffix='ExpSyn',
-##            locations=[somacenter_loc]) )
-##
-##        expsyn_loc.append( ephys.locations.NrnPointProcessLocation(
-##            'expsyn_loc',
-##            pprocess_mech=expsyn_mech[-1]) )
-##
-##        expsyn_tau_param.append( ephys.parameters.NrnPointProcessParameter(
-##            name='expsyn_tau',
-##            param_name='tau',
-##            value=2,
-##            bounds=[0, 50],
-##            locations=[expsyn_loc[-1]]) )
-
 
     # stimulus parameters 
     stim_start = 20
