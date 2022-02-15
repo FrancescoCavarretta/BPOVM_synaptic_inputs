@@ -9,7 +9,44 @@ import bluepyopt as bpopt
 import bluepyopt.ephys as ephys
 
 
-def main():
+""" create a synaptic circuit, as nsyn synapses """
+class SynapticCircuit:
+    def __init__(self, nsyn, location):
+        self.nsyn = nsyn
+
+        if type(location) == list:
+            self.location = location
+        else:
+            self.location = [location]
+        
+        # create nsyn synapses
+        self.expsyn_mech = []
+        self.expsyn_loc = []
+        self.expsyn_tau_param = []
+
+        for isyn in range(self.nsyn):
+            self.expsyn_mech.append( ephys.mechanisms.NrnMODPointProcessMechanism(
+                name='expsyn',
+                suffix='ExpSyn',
+                locations=self.location) )
+
+            self.expsyn_loc.append( ephys.locations.NrnPointProcessLocation(
+                'expsyn_loc',
+                pprocess_mech=self.expsyn_mech[-1]) )
+
+            self.expsyn_tau_param.append( ephys.parameters.NrnPointProcessParameter(
+                name='expsyn_tau',
+                param_name='tau',
+                value=2,
+                bounds=[0, 50],
+                locations=[self.expsyn_loc[-1]]) )
+
+
+
+            
+        
+
+def main(nsyn=1):
     """Main"""
     nrn_sim = ephys.simulators.NrnSimulator()
 
@@ -17,6 +54,7 @@ def main():
         os.path.join(
             os.path.dirname(os.path.abspath(__file__)),
             'simple.swc'))
+    
     somatic_loc = ephys.locations.NrnSeclistLocation(
         'somatic',
         seclist_name='somatic')
@@ -32,35 +70,48 @@ def main():
         suffix='pas',
         locations=[somatic_loc])
 
-    expsyn_mech = ephys.mechanisms.NrnMODPointProcessMechanism(
-        name='expsyn',
-        suffix='ExpSyn',
-        locations=[somacenter_loc])
 
-    expsyn_loc = ephys.locations.NrnPointProcessLocation(
-        'expsyn_loc',
-        pprocess_mech=expsyn_mech)
 
-    expsyn_tau_param = ephys.parameters.NrnPointProcessParameter(
-        name='expsyn_tau',
-        param_name='tau',
-        value=2,
-        bounds=[0, 50],
-        locations=[expsyn_loc])
+    syn_circuit = SynapticCircuit(nsyn, somacenter_loc)
 
+##    # create nsyn synapses
+##    expsyn_mech = []
+##    expsyn_loc = []
+##    expsyn_tau_param = []
+##
+##    for isyn in range(nsyn):
+##        expsyn_mech.append( ephys.mechanisms.NrnMODPointProcessMechanism(
+##            name='expsyn',
+##            suffix='ExpSyn',
+##            locations=[somacenter_loc]) )
+##
+##        expsyn_loc.append( ephys.locations.NrnPointProcessLocation(
+##            'expsyn_loc',
+##            pprocess_mech=expsyn_mech[-1]) )
+##
+##        expsyn_tau_param.append( ephys.parameters.NrnPointProcessParameter(
+##            name='expsyn_tau',
+##            param_name='tau',
+##            value=2,
+##            bounds=[0, 50],
+##            locations=[expsyn_loc[-1]]) )
+
+
+    # stimulus parameters 
     stim_start = 20
     number = 5
     interval = 5
-
+    stim_end = stim_start + interval * number
+    
     netstim = ephys.stimuli.NrnNetStimStimulus(
         total_duration=200,
         number=5,
         interval=5,
         start=stim_start,
         weight=5e-4,
-        locations=[expsyn_loc])
+        locations=syn_circuit.expsyn_loc)
 
-    stim_end = stim_start + interval * number
+    
 
     cm_param = ephys.parameters.NrnSectionParameter(
         name='cm',
@@ -72,8 +123,8 @@ def main():
     cell = ephys.models.CellModel(
         name='simple_cell',
         morph=morph,
-        mechs=[pas_mech, expsyn_mech],
-        params=[cm_param, expsyn_tau_param])
+        mechs=[pas_mech]+syn_circuit.expsyn_mech,
+        params=[cm_param]+syn_circuit.expsyn_tau_param)
 
     rec = ephys.recordings.CompRecording(
         name='soma.v',
@@ -93,6 +144,7 @@ def main():
         stim_end=stim_end,
         exp_mean=-50,
         exp_std=.1)
+    
     max_volt_objective = ephys.objectives.SingletonObjective(
         max_volt_feature.name,
         max_volt_feature)
@@ -140,4 +192,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(nsyn=10)
