@@ -4,42 +4,145 @@
 
 
 import os
-
+import logging
 import bluepyopt as bpopt
 import bluepyopt.ephys as ephys
+from bluepyopt.ephys.serializer import DictMixin
+logger = logging.getLogger(__name__)
+
+class PyParameter(bpopt.parameters.Parameter, DictMixin):
+
+    """Parameter of a section"""
+    SERIALIZED_FIELDS = ('name', 'value', 'frozen', 'bounds', 'param_name',
+                         'value_scaler', 'locations', )
+
+    def __init__(
+            self,
+            name,
+            value=None,
+            frozen=False,
+            bounds=None,
+            locations=None,
+            param_name=None):
+        """Constructor
+        Args:
+            name (str): name of the Parameter
+            value (float): Value for the parameter, required if Frozen=True
+            frozen (bool): Whether the parameter can be varied, or its values
+            is permently set
+            bounds (indexable): two elements; the lower and upper bounds
+                (Optional)
+            locations: an iterator of the point process locations you want to
+                       set the parameters of
+            param_name (str): name of parameter used within the point process
+        """
+
+        super(PyParameter, self).__init__(
+            name,
+            value=value,
+            frozen=frozen,
+            bounds=bounds)
+
+        self.locations = locations
+        self.param_name = param_name
+
+
+    def instantiate(self, sim=None, icell=None):
+        """Instantiate"""
+        if self.value is None:
+            raise Exception(
+                'PySectionParameter: impossible to instantiate parameter "%s"'
+                ' without value' %
+                self.name)
+
+        for location in self.locations:
+            setattr(location, self.param_name, int( self.value ) )
+            location.instantiate(sim=sim, icell=icell)
+            logger.debug(
+                'Set %s to %s for point process',
+                self.param_name,
+                self.value)
+            
+
+    def __str__(self):
+        """String representation"""
+        return '%s: %s = %s' % (self.name,
+                                self.param_name,
+                                self.value if self.frozen else self.bounds)
+    
+    def destroy(self, sim=None):
+        for location in self.locations:
+            location.destroy(sim=sim)
 
 
 """ create a synaptic circuit, as nsyn synapses """
 class SynapticCircuit:
-    def __init__(self, nsyn, location):
-        self.nsyn = nsyn
-
+    def __init__(self, location):
         if type(location) == list:
             self.location = location
         else:
             self.location = [location]
-        
+
         # create nsyn synapses
         self.expsyn_mech = []
         self.expsyn_loc = []
         self.expsyn_tau_param = []
+        self.nsyn = 0
+        
+        # stimulus parameters 
+        self.stim_start = 20
+        self.number = 5
+        self.interval = 5
+        self.stim_duration = self.interval * self.number
+        self.stim_end = self.stim_start + self.stim_duration
+        self.weight = 5e-4
+        
+        self.netstim = ephys.stimuli.NrnNetStimStimulus(total_duration=self.stim_duration,
+            number=self.number,
+            interval=self.interval,
+            start=self.stim_start,
+            weight=self.weight,
+            locations=self.expsyn_loc)
 
+
+        
+    def instantiate(self, sim=None, icell=None):
+        self.expsyn_mech = [None] * self.nsyn
+        self.expsyn_loc = [None] * self.nsyn
+        self.expsyn_tau_param = [None] * self.nsyn
+        
         for isyn in range(self.nsyn):
-            self.expsyn_mech.append( ephys.mechanisms.NrnMODPointProcessMechanism(
-                name='expsyn',
-                suffix='ExpSyn',
-                locations=self.location) )
+            self.expsyn_mech[isyn] = ephys.mechanisms.NrnMODPointProcessMechanism(name='expsyn', suffix='ExpSyn', locations=self.location) 
+            self.expsyn_mech[isyn].instantiate(sim=sim, icell=icell)
 
-            self.expsyn_loc.append( ephys.locations.NrnPointProcessLocation(
-                'expsyn_loc',
-                pprocess_mech=self.expsyn_mech[-1]) )
+            self.expsyn_loc[isyn] = ephys.locations.NrnPointProcessLocation('expsyn_loc', pprocess_mech=self.expsyn_mech[isyn]) 
+            self.expsyn_loc[isyn].instantiate(sim=sim, icell=icell)
 
-            self.expsyn_tau_param.append( ephys.parameters.NrnPointProcessParameter(
-                name='expsyn_tau',
-                param_name='tau',
-                value=2,
-                bounds=[0, 50],
-                locations=[self.expsyn_loc[-1]]) )
+            self.expsyn_tau_param[isyn] = ephys.parameters.NrnPointProcessParameter(name='expsyn_tau', param_name='tau', value=2, bounds=[0, 50],locations=[self.expsyn_loc[isyn]]) 
+            self.expsyn_tau_param[isyn].instantiate(sim=sim, icell=icell)
+
+        self.netstim.locations = self.expsyn_loc
+        self.netstim.instantiate(sim=sim, icell=icell)
+        
+
+    def destroy(self, sim=None):
+        for isyn in range(self.nsyn):
+            self.expsyn_mech[isyn].destroy(sim=sim)
+            #self.expsyn_loc[isyn].destroy(sim=sim)
+            self.expsyn_tau_param[isyn].destroy(sim=sim)
+        self.netstim.destroy(sim=sim)
+        self.nsyn = 0
+        self.expsyn_mech = []
+        self.expsyn_loc = []
+        self.expsyn_tau_param = []
+
+
+
+
+
+            
+
+            
 
 
 
@@ -72,22 +175,16 @@ def main(nsyn=1):
 
 
 
-    syn_circuit = SynapticCircuit(nsyn, somacenter_loc)
+    syn_circuit = SynapticCircuit(somacenter_loc)
+    syn_circuit.nsyn = nsyn
 
 
-    # stimulus parameters 
-    stim_start = 20
-    number = 5
-    interval = 5
-    stim_end = stim_start + interval * number
-    
-    netstim = ephys.stimuli.NrnNetStimStimulus(
-        total_duration=200,
-        number=5,
-        interval=5,
-        start=stim_start,
-        weight=5e-4,
-        locations=syn_circuit.expsyn_loc)
+    syn_circ_nsyn = PyParameter(name='syn_circ_nsyn',
+                                param_name='nsyn',
+                                value=0,
+                                bounds=[0, 10],
+                                locations=[syn_circuit])
+
 
     
 
@@ -101,8 +198,8 @@ def main(nsyn=1):
     cell = ephys.models.CellModel(
         name='simple_cell',
         morph=morph,
-        mechs=[pas_mech]+syn_circuit.expsyn_mech,
-        params=[cm_param]+syn_circuit.expsyn_tau_param)
+        mechs=[pas_mech, syn_circuit],
+        params=[cm_param, syn_circ_nsyn])
 
     rec = ephys.recordings.CompRecording(
         name='soma.v',
@@ -111,15 +208,15 @@ def main(nsyn=1):
 
     protocol = ephys.protocols.SweepProtocol(
         'netstim_protocol',
-        [netstim],
+        [syn_circuit.netstim],
         [rec])
 
     max_volt_feature = ephys.efeatures.eFELFeature(
         'maximum_voltage',
         efel_feature_name='maximum_voltage',
         recording_names={'': 'soma.v'},
-        stim_start=stim_start,
-        stim_end=stim_end,
+        stim_start=syn_circuit.stim_start,
+        stim_end=syn_circuit.stim_end,
         exp_mean=-50,
         exp_std=.1)
     
@@ -132,12 +229,12 @@ def main(nsyn=1):
 
     cell_evaluator = ephys.evaluators.CellEvaluator(
         cell_model=cell,
-        param_names=['expsyn_tau'],
+        param_names=['syn_circ_nsyn'],
         fitness_protocols={protocol.name: protocol},
         fitness_calculator=score_calc,
         sim=nrn_sim)
 
-    default_param_values = {'expsyn_tau': 10.0}
+    default_param_values = {'syn_circ_nsyn': 10}
 
     print(cell_evaluator.evaluate_with_dicts(default_param_values))
 
