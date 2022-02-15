@@ -56,7 +56,7 @@ class PyParameter(bpopt.parameters.Parameter, DictMixin):
                 self.name)
 
         for location in self.locations:
-            setattr(location, self.param_name, int( self.value ) )
+            setattr(location, self.param_name, self.value  )
             location.instantiate(sim=sim, icell=icell)
             logger.debug(
                 'Set %s to %s for point process',
@@ -93,11 +93,13 @@ class SynapticCircuit:
         self.stim_start = 20
         self.number = 5
         self.interval = 5
+        self.time_add = 20
         self.stim_duration = self.interval * self.number
         self.stim_end = self.stim_start + self.stim_duration
+        self.total_duration = self.stim_end + self.time_add
         self.weight = 5e-4
         
-        self.netstim = ephys.stimuli.NrnNetStimStimulus(total_duration=self.stim_duration,
+        self.netstim = ephys.stimuli.NrnNetStimStimulus(total_duration=self.stim_end,
             number=self.number,
             interval=self.interval,
             start=self.stim_start,
@@ -107,18 +109,20 @@ class SynapticCircuit:
 
         
     def instantiate(self, sim=None, icell=None):
-        self.expsyn_mech = [None] * self.nsyn
-        self.expsyn_loc = [None] * self.nsyn
-        self.expsyn_tau_param = [None] * self.nsyn
+        nsyn = int(round(self.nsyn))
+    
+        self.expsyn_mech = [None] * nsyn
+        self.expsyn_loc = [None] * nsyn
+        self.expsyn_tau_param = [None] * nsyn
         
-        for isyn in range(self.nsyn):
-            self.expsyn_mech[isyn] = ephys.mechanisms.NrnMODPointProcessMechanism(name='expsyn', suffix='ExpSyn', locations=self.location) 
+        for isyn in range(nsyn):
+            self.expsyn_mech[isyn] = ephys.mechanisms.NrnMODPointProcessMechanism(name='expsyn' + '_' + str(isyn), suffix='ExpSyn', locations=self.location) 
             self.expsyn_mech[isyn].instantiate(sim=sim, icell=icell)
 
-            self.expsyn_loc[isyn] = ephys.locations.NrnPointProcessLocation('expsyn_loc', pprocess_mech=self.expsyn_mech[isyn]) 
+            self.expsyn_loc[isyn] = ephys.locations.NrnPointProcessLocation('expsyn_loc' + '_' + str(isyn), pprocess_mech=self.expsyn_mech[isyn]) 
             self.expsyn_loc[isyn].instantiate(sim=sim, icell=icell)
 
-            self.expsyn_tau_param[isyn] = ephys.parameters.NrnPointProcessParameter(name='expsyn_tau', param_name='tau', value=2, bounds=[0, 50],locations=[self.expsyn_loc[isyn]]) 
+            self.expsyn_tau_param[isyn] = ephys.parameters.NrnPointProcessParameter(name='expsyn_tau' + '_' + str(isyn), param_name='tau', value=14.0, locations=[self.expsyn_loc[isyn]]) 
             self.expsyn_tau_param[isyn].instantiate(sim=sim, icell=icell)
 
         self.netstim.locations = self.expsyn_loc
@@ -126,7 +130,9 @@ class SynapticCircuit:
         
 
     def destroy(self, sim=None):
-        for isyn in range(self.nsyn):
+        nsyn = int(round(self.nsyn))
+    
+        for isyn in range(nsyn):
             self.expsyn_mech[isyn].destroy(sim=sim)
             #self.expsyn_loc[isyn].destroy(sim=sim)
             self.expsyn_tau_param[isyn].destroy(sim=sim)
@@ -149,7 +155,7 @@ class SynapticCircuit:
             
         
 
-def main(nsyn=1):
+def main():
     """Main"""
     nrn_sim = ephys.simulators.NrnSimulator()
 
@@ -176,13 +182,11 @@ def main(nsyn=1):
 
 
     syn_circuit = SynapticCircuit(somacenter_loc)
-    syn_circuit.nsyn = nsyn
-
 
     syn_circ_nsyn = PyParameter(name='syn_circ_nsyn',
                                 param_name='nsyn',
                                 value=0,
-                                bounds=[0, 10],
+                                bounds=[0, 100],
                                 locations=[syn_circuit])
 
 
@@ -217,8 +221,8 @@ def main(nsyn=1):
         recording_names={'': 'soma.v'},
         stim_start=syn_circuit.stim_start,
         stim_end=syn_circuit.stim_end,
-        exp_mean=-50,
-        exp_std=.1)
+        exp_mean=-30,
+        exp_std=1.0)
     
     max_volt_objective = ephys.objectives.SingletonObjective(
         max_volt_feature.name,
@@ -234,7 +238,7 @@ def main(nsyn=1):
         fitness_calculator=score_calc,
         sim=nrn_sim)
 
-    default_param_values = {'syn_circ_nsyn': 10}
+    default_param_values = {'syn_circ_nsyn': 15}
 
     print(cell_evaluator.evaluate_with_dicts(default_param_values))
 
@@ -267,4 +271,4 @@ def main(nsyn=1):
 
 
 if __name__ == '__main__':
-    main(nsyn=10)
+    main()
