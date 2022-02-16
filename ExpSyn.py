@@ -22,11 +22,27 @@ from point_process import NrnPointProcess, PointProcessGroup
 
 
             
-
+class ISI:
+    def __init__(self):
+        self.n = 0
+        self.first = True
+    
+    def get(self):
+        self.n += 1
+        if self.n > 5:
+            return None
+        if self.first:
+            self.first = False
+            return 20.0
+        return 5.0
+    
+    def reset(self):
+        self.n = 0
+        self.first = True
             
 
 
-
+from spiketrain import NrnSpikeTrainGenerator
             
         
 
@@ -54,7 +70,8 @@ def main():
         suffix='pas',
         locations=[somatic_loc])
 
-    # stimulus parameters 
+    # stimulus parameters
+
     stim_start = 20
     number = 5
     interval = 5
@@ -64,7 +81,12 @@ def main():
     total_duration = stim_end + time_add
     weight = 1.0
     
+    stg = NrnSpikeTrainGenerator(ISI())
+    stg.total_duration = total_duration    
+
     netstim = ephys.stimuli.NrnNetStimStimulus(total_duration=stim_end, number=number, interval=interval, start=stim_start, weight=weight, locations=[])
+
+    netstim = stg
 
     syn_circuit = PointProcessGroup('MyExpSyn', somacenter_loc, netstim, 'gmax', tau=14.0)
 
