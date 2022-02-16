@@ -81,13 +81,10 @@ def main():
     total_duration = stim_end + time_add
     weight = 1.0
     
-    stg = NrnSpikeTrainGenerator(ISI())
-    stg.total_duration = total_duration    
+    netstim = NrnSpikeTrainGenerator(ISI(), total_duration)
 
-    netstim = ephys.stimuli.NrnNetStimStimulus(total_duration=stim_end, number=number, interval=interval, start=stim_start, weight=weight, locations=[])
-
-    netstim = stg
-
+    #netstim = ephys.stimuli.NrnNetStimStimulus(total_duration=stim_end, number=number, interval=interval, start=stim_start, weight=weight, locations=[])
+    
     syn_circuit = PointProcessGroup('MyExpSyn', somacenter_loc, netstim, 'gmax', tau=14.0)
 
     syn_circ_nsyn = PyObjectParameter(name='syn_circ_nsyn',
